@@ -16,12 +16,12 @@ const DASH_STRENGTH: f32 = 60.0;
 const DASH_FALLOFF: f32 = 60.0;
 
 // manager consts
-const SPAWN_TIME_MIN: f64 = 1.5;
-const SPAWN_TIME_MAX: f64 = 2.5;
+const SPAWN_TIME_MIN: f64 = 3.0;
+const SPAWN_TIME_MAX: f64 = 4.0;
 const INITIAL_SPAWN_TIME: f64 = 1.0;
 
-const INITIAL_TRIPLE_SPAWN_CHANCE: f32 = 0.2; // great names
-const INITIAL_DOUBLE_SPAWN_CHANCE: f32 = 0.5;
+const INITIAL_TRIPLE_SPAWN_CHANCE: f32 = 0.0; // great names
+const INITIAL_DOUBLE_SPAWN_CHANCE: f32 = 0.3;
 
 // shouldve made separate files, oh well
 

@@ -1,4 +1,5 @@
 use macroquad::prelude::*;
+use macroquad::rand::ChooseRandom;
 
 mod sprite;
 mod player;
@@ -14,14 +15,36 @@ const TITLE: &'static str = "wild_west_prototype_v0.1.0";
 const GAME_W: f32 = 128.0;
 const GAME_H: f32 = 128.0;
 
+const INITIAL_BUG_CHANGE_TIME: f64 = 10.0;
+const BUG_TEXT_TIME: f64 = 2.0;
+
+const BUG_CHANGE_TIME_INTERVAL: f64 = 15.0;
+const BUG_CHANGE_TIME_DECREMENT: f64 = 1.0;
+const BUG_CHANGE_TIME_MIN: f64 = 2.0;
+
+#[derive(Copy, Clone)]
 enum Bug {
 	BadAim,
+	Inverted,
+	Paint,
 }
 
+static BUGS: [Bug; 3] = [
+	Bug::BadAim,
+	Bug::Inverted,
+	Bug::Paint,
+];
+
 impl Bug {
+	fn random() -> Bug {
+		BUGS.choose().cloned().expect("choose on a [T] should never fail (it always does get on an index from 0 to len open on len)")
+	}
+
 	fn name(&self) -> &'static str {
 		match self {
 			Bug::BadAim => "BAD AIM",
+			Bug::Inverted => "INVERTED",
+			Bug::Paint => "PAINT",
 		}
 	}
 }
@@ -36,6 +59,8 @@ struct GameState {
 	render_mouse_position: Vec2,
 	game_mouse_position: Vec2,
 
+	first_frame: bool,
+
 	delta: f32,
 	time: f64,
 
@@ -47,6 +72,10 @@ struct GameState {
 	score: u32,
 
 	current_bug: Bug,
+	last_bug_change: f64,
+
+	bug_change_time: f64,
+	last_bug_time_decrease: f64,
 
 	bg_texture: Texture2D,
 }
@@ -75,6 +104,8 @@ impl GameState {
 			render_mouse_position: vec2(0.0, 0.0),
 			game_mouse_position: vec2(0.0, 0.0),
 
+			first_frame: true,
+
 			delta: 0.0,
 			time: 0.0,
 
@@ -84,7 +115,11 @@ impl GameState {
 
 			score: 0,
 
-			current_bug: Bug::BadAim,
+			current_bug: Bug::random(),
+			last_bug_change: 0.0,
+
+			bug_change_time: INITIAL_BUG_CHANGE_TIME,
+			last_bug_time_decrease: 0.0,
 
 			bg_texture,
 		};
@@ -96,6 +131,16 @@ impl GameState {
 	}
 
 	fn process(&mut self) -> Result<(), ()> {
+		if self.time - self.last_bug_change >= self.bug_change_time {
+			self.current_bug = Bug::random();
+			self.last_bug_change = self.time;
+		}
+
+		if self.time - self.last_bug_time_decrease >= BUG_CHANGE_TIME_INTERVAL {
+			self.bug_change_time = f64::max(BUG_CHANGE_TIME_MIN, self.bug_change_time - BUG_CHANGE_TIME_DECREMENT);
+			self.last_bug_time_decrease = self.time;
+		}
+
 		self.player.process(&self.current_bug, self.delta, self.time, self.game_mouse_position, &mut self.projectiles, &self.enemies.enemies /* ha enemies.enemies */);
 		if self.player.dead {return Err(());}
 
@@ -120,7 +165,15 @@ impl GameState {
 		set_camera(&self.camera);
 
 		// main stuff
-		draw_texture(&self.bg_texture, 0.0, 0.0, WHITE);
+		if !self.first_frame {
+			match self.current_bug {
+				Bug::Paint => {},
+				_ => draw_texture(&self.bg_texture, 0.0, 0.0, WHITE),
+			}
+		} else {
+			// gotta draw the background at least once in case Paint falls first
+			draw_texture(&self.bg_texture, 0.0, 0.0, WHITE);
+		}
 
 		for p in &self.projectiles {
 			p.render();
@@ -131,8 +184,14 @@ impl GameState {
 		self.player.render();
 
 		// ui
-		draw_text(format!("HP: {}", self.player.health).as_str(), 0.0, 9.0, 16.0, BLACK);
+		draw_text(format!("HP: {}", self.player.health).as_str(), 0.0,  9.0, 16.0, BLACK);
+		draw_text(format!("AMMO: {}", self.player.ammo).as_str(), 0.0, 18.0, 16.0, BLACK);
+
 		draw_text(format!("SCORE: {}", self.score*10).as_str(), 0.0, GAME_H-1.0, 16.0, BLACK);
+
+		let bug_text: String = format!("BUG: {}", self.current_bug.name());
+		let bug_text_width: f32 = measure_text(bug_text.as_str(), None, 16, 1.0).width;
+		draw_text(bug_text.as_str(), (GAME_W - bug_text_width)/2.0, 27.0, 16.0, Color::new(0.0, 0.0, 0.0, 1.0 - ((self.time - self.last_bug_change)/BUG_TEXT_TIME) as f32));
 
 
 		// -- RENDERING TARGET TO SCREEN --
@@ -196,6 +255,7 @@ async fn main() {
 
 		state.render();
 
+		state.first_frame = false;
 		next_frame().await;
 	}
 }

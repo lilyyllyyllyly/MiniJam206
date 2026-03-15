@@ -21,6 +21,10 @@ const BREAK_STRENGTH: f32 = 2.5;
 const GUN_Y_OFFSET: f32 = -4.0;
 const PROJ_SPAWN_DIST: f32 = 4.0;
 
+const MAX_AMMO: u32 = 6;
+const RELOAD_TIME: f64 = 0.6;
+const SHOOT_DELAY: f64 = 0.15;
+
 pub struct Player {
 	pub dead: bool,
 	pub health: i32,
@@ -31,6 +35,9 @@ pub struct Player {
 
 	speed: f32,
 	max_accel: f32,
+
+	pub ammo: u32,
+	last_shot: f64,
 
 	sprite: Sprite,
 	gun_sprite: Sprite,
@@ -48,6 +55,9 @@ impl Player {
 
 			speed: SPEED,
 			max_accel: MAX_ACCEL,
+
+			ammo: MAX_AMMO,
+			last_shot: 0.0,
 
 			sprite: Sprite::new(texture, vec2(6.0, 11.0), WHITE),
 			gun_sprite: Sprite::new(gun_texture, vec2(-1.0, -GUN_Y_OFFSET), WHITE),
@@ -87,10 +97,15 @@ impl Player {
 		}
 
 		// - move -
-		let direction: Vec2 = vec2(
+		let mut direction: Vec2 = vec2(
 			(if is_key_down(KeyCode::D) {1.0} else {0.0}) - (if is_key_down(KeyCode::A) {1.0} else {0.0}),
 			(if is_key_down(KeyCode::S) {1.0} else {0.0}) - (if is_key_down(KeyCode::W) {1.0} else {0.0}),
 		).normalize_or_zero();
+
+		match current_bug {
+			Bug::Inverted => direction = -direction,
+			_ => {},
+		}
 
 		let goal_vel: Vec2 = direction * self.speed;
 
@@ -115,9 +130,16 @@ impl Player {
 		}
 
 		// shooting
-		if is_mouse_button_pressed(MouseButton::Left) {
+		if self.ammo == 0 && time - self.last_shot >= RELOAD_TIME {
+			self.ammo = 6;
+		}
+
+		if is_mouse_button_down(MouseButton::Left) && time - self.last_shot >= SHOOT_DELAY && self.ammo > 0 {
 			let proj_position: Vec2 = vec2(self.position.x, self.position.y + GUN_Y_OFFSET) + aim_direction * PROJ_SPAWN_DIST;
 			projectiles.push(Projectile::new(proj_position, aim_direction, time));
+
+			self.ammo -= 1;
+			self.last_shot = time;
 		}
 
 		// update gun rotation
