@@ -3,31 +3,38 @@ use macroquad::rand::{gen_range};
 
 use crate::{GAME_W, GAME_H};
 use crate::sprite::Sprite;
+use crate::projectile::Projectile;
 
 // enemy consts
-const RADIUS: f32 = 4.0;
-const COLLISION_Y_OFFSET: f32 = -5.0;
+const MAX_HEALTH: i32 = 3;
+
+const RADIUS: f32 = 5.0;
+pub const COLLISION_Y_OFFSET: f32 = -5.0;
 
 const DASH_TIME: f64 = 2.0;
 const DASH_STRENGTH: f32 = 60.0;
 const DASH_FALLOFF: f32 = 60.0;
 
 // manager consts
-const SPAWN_TIME_MIN: f64 = 3.0;
-const SPAWN_TIME_MAX: f64 = 4.0;
+const SPAWN_TIME_MIN: f64 = 1.5;
+const SPAWN_TIME_MAX: f64 = 2.5;
 const INITIAL_SPAWN_TIME: f64 = 1.0;
 
-const DOUBLE_SPAWN_CHANCE: f32 = 0.3;
+const INITIAL_TRIPLE_SPAWN_CHANCE: f32 = 0.2; // great names
+const INITIAL_DOUBLE_SPAWN_CHANCE: f32 = 0.5;
 
 // shouldve made separate files, oh well
 
 pub struct Enemy {
-	position: Vec2,
+	pub destroy: bool,
+	health: i32,
+
+	pub position: Vec2,
 	velocity: Vec2,
 
 	last_dash: f64,
 
-	radius: f32,
+	pub radius: f32,
 
 	sprite: Sprite,
 }
@@ -35,6 +42,9 @@ pub struct Enemy {
 impl Enemy {
 	pub fn new(position: Vec2, texture: Texture2D) -> Self {
 		Self {
+			destroy: false,
+			health: MAX_HEALTH,
+
 			position,
 			velocity: vec2(0.0, 0.0),
 
@@ -46,7 +56,24 @@ impl Enemy {
 		}
 	}
 
-	pub fn process(&mut self, delta: f32, time: f64, player_position: Vec2) {
+	pub fn process(&mut self, delta: f32, time: f64, player_position: Vec2, projectiles: &mut Vec<Projectile>, score: &mut u32) {
+		// - damage and health -
+		let collider_center: Vec2 = vec2(self.position.x, self.position.y + COLLISION_Y_OFFSET);
+
+		for p in projectiles {
+			if (p.position - collider_center).length() > self.radius {continue;}
+
+			self.health -= 1;
+			p.destroy = true;
+		}
+
+		if self.health <= 0 {
+			self.destroy = true;
+			*score += 1;
+			return;
+		}
+
+		// - move -
 		let direction: Vec2 = (player_position - self.position).normalize_or_zero();
 
 		if time - self.last_dash >= DASH_TIME {
@@ -61,7 +88,7 @@ impl Enemy {
 
 	pub fn render(&self) {
 		self.sprite.render(self.position.x, self.position.y);
-		draw_circle_lines(self.position.x, self.position.y + COLLISION_Y_OFFSET, self.radius, 1.0, Color::new(0.1, 0.4, 1.0, 0.75)); // debug collision
+		//draw_circle_lines(self.position.x, self.position.y + COLLISION_Y_OFFSET, self.radius, 1.0, Color::new(0.1, 0.4, 1.0, 0.75)); // debug collision
 	}
 }
 
@@ -70,6 +97,9 @@ pub struct EnemyManager {
 
 	last_spawn: f64,
 	next_spawn_time: f64,
+
+	double_spawn_chance: f32,
+	triple_spawn_chance: f32,
 
 	enemy_ball_texture: Texture2D,
 }
@@ -82,23 +112,27 @@ impl EnemyManager {
 			last_spawn: 0.0,
 			next_spawn_time: INITIAL_SPAWN_TIME,
 
+			double_spawn_chance: INITIAL_DOUBLE_SPAWN_CHANCE,
+			triple_spawn_chance: INITIAL_TRIPLE_SPAWN_CHANCE,
+
 			enemy_ball_texture,
 		}
 	}
 
 	fn spawn(&mut self) {
-		let enter_vertically: bool = gen_range(0, 1) == 0;
+		let enter_vertically: bool = gen_range(0, 2) == 0;
+
 		let position: Vec2 = if enter_vertically {
-			let top: bool = gen_range(0, 1) == 0;
+			let top: bool = gen_range(0, 2) == 0;
 			vec2(
 				gen_range(0.0, GAME_W),
-				if top {0.0} else {GAME_H},
+				if top {0.0} else {GAME_H+18.0},
 			)
 		} else {
-			let left: bool = gen_range(0, 1) == 0;
+			let left: bool = gen_range(0, 2) == 0;
 			vec2(
 				if left {0.0} else {GAME_W},
-				gen_range(0.0, GAME_H),
+				gen_range(0.0, GAME_H+18.0),
 			)
 		};
 
@@ -108,14 +142,19 @@ impl EnemyManager {
 		));
 	}
 
-	pub fn process(&mut self, delta: f32, time: f64, player_position: Vec2) {
-		// spawning
+	pub fn process(&mut self, delta: f32, time: f64, player_position: Vec2, projectiles: &mut Vec<Projectile>, score: &mut u32) {
+		// - spawning -
 		if time - self.last_spawn >= self.next_spawn_time {
-			if gen_range(0.0, 1.0) < DOUBLE_SPAWN_CHANCE {
-				for _ in 0..2 {
-					self.spawn();
-				}
+			let r: f32 = gen_range(0.0, 1.0);
+			let count: u32 = if r < self.triple_spawn_chance {
+				3
+			} else if r < self.double_spawn_chance {
+				2
 			} else {
+				1
+			};
+
+			for _ in 0..count {
 				self.spawn();
 			}
 
@@ -123,10 +162,12 @@ impl EnemyManager {
 			self.next_spawn_time = gen_range(SPAWN_TIME_MIN, SPAWN_TIME_MAX);
 		}
 
-		// processing enemies
+		// - processing enemies -
 		for e in &mut self.enemies {
-			e.process(delta, time, player_position);
+			e.process(delta, time, player_position, projectiles, score);
 		}
+
+		self.enemies.retain(|e| !e.destroy);
 	}
 
 	pub fn render(&self) {

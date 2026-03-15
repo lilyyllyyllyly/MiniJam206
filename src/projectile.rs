@@ -7,7 +7,7 @@ pub struct Projectile {
 	pub destroy: bool,
 	create_time: f64,
 
-	position: Vec2,
+	pub position: Vec2,
 	direction: Vec2,
 }
 

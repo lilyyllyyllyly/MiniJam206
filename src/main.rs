@@ -9,10 +9,22 @@ use player::Player;
 use projectile::Projectile;
 use enemy::EnemyManager;
 
-const TITLE: &'static str = "Mini Jam 206";
+const TITLE: &'static str = "wild_west_prototype_v0.1.0";
 
 const GAME_W: f32 = 128.0;
 const GAME_H: f32 = 128.0;
+
+enum Bug {
+	BadAim,
+}
+
+impl Bug {
+	fn name(&self) -> &'static str {
+		match self {
+			Bug::BadAim => "BAD AIM",
+		}
+	}
+}
 
 struct GameState {
 	render_target: RenderTarget,
@@ -31,6 +43,10 @@ struct GameState {
 	projectiles: Vec<Projectile>,
 
 	enemies: EnemyManager,
+
+	score: u32,
+
+	current_bug: Bug,
 
 	bg_texture: Texture2D,
 }
@@ -62,11 +78,15 @@ impl GameState {
 			delta: 0.0,
 			time: 0.0,
 
-			bg_texture,
-
 			player: Player::new(player_texture, gun_texture),
 			projectiles: Vec::new(),
 			enemies: EnemyManager::new(enemy_ball_texture),
+
+			score: 0,
+
+			current_bug: Bug::BadAim,
+
+			bg_texture,
 		};
 
 		state.render_target.texture.set_filter(FilterMode::Nearest);
@@ -75,8 +95,11 @@ impl GameState {
 		state
 	}
 
-	fn process(&mut self) {
-		self.player.process(self.delta, self.time, self.game_mouse_position, &mut self.projectiles);
+	fn process(&mut self) -> Result<(), ()> {
+		self.player.process(&self.current_bug, self.delta, self.time, self.game_mouse_position, &mut self.projectiles, &self.enemies.enemies /* ha enemies.enemies */);
+		if self.player.dead {return Err(());}
+
+		self.enemies.process(self.delta, self.time, self.player.position, &mut self.projectiles, &mut self.score);
 
 		// - projectiles -
 		// processing
@@ -88,7 +111,7 @@ impl GameState {
 		self.projectiles.retain(|p| !p.destroy);
 		// --
 
-		self.enemies.process(self.delta, self.time, self.player.position);
+		Ok(())
 	}
 
 	fn render(&self) {
@@ -96,15 +119,21 @@ impl GameState {
 
 		set_camera(&self.camera);
 
+		// main stuff
 		draw_texture(&self.bg_texture, 0.0, 0.0, WHITE);
-
-		self.player.render();
 
 		for p in &self.projectiles {
 			p.render();
 		}
 
 		self.enemies.render();
+
+		self.player.render();
+
+		// ui
+		draw_text(format!("HP: {}", self.player.health).as_str(), 0.0, 9.0, 16.0, BLACK);
+		draw_text(format!("SCORE: {}", self.score*10).as_str(), 0.0, GAME_H-1.0, 16.0, BLACK);
+
 
 		// -- RENDERING TARGET TO SCREEN --
 
@@ -160,7 +189,11 @@ async fn main() {
 		state.render_mouse_position = vec2(mouse_position().0, mouse_position().1);
 		state.game_mouse_position = (state.render_mouse_position - state.render_area_origin) / state.render_area_scale;
 
-		state.process();
+		if state.process().is_err() {
+			state = GameState::new().await;
+			continue;
+		}
+
 		state.render();
 
 		next_frame().await;

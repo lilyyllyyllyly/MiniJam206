@@ -1,8 +1,16 @@
 use macroquad::prelude::*;
 
-use crate::{GAME_W, GAME_H};
+use crate::{Bug, GAME_W, GAME_H};
 use crate::sprite::Sprite;
 use crate::projectile::Projectile;
+
+use crate::enemy::Enemy;
+use crate::enemy::COLLISION_Y_OFFSET as ENEMY_COLLISION_OFFSET;
+
+const MAX_HEALTH: i32 = 5;
+const IFRAMES: f64 = 0.8; // measured in seconds, despite literally being called i*frames*
+const INVULNERABLE_ALPHA: f32 = 0.5;
+const COLLISION_Y_OFFSET: f32 = -4.0;
 
 const SPEED: f32 = 80.0;
 const MAX_ACCEL: f32 = 600.0;
@@ -14,6 +22,10 @@ const GUN_Y_OFFSET: f32 = -4.0;
 const PROJ_SPAWN_DIST: f32 = 4.0;
 
 pub struct Player {
+	pub dead: bool,
+	pub health: i32,
+	last_hit: f64,
+
 	pub position: Vec2,
 	velocity: Vec2,
 
@@ -27,6 +39,10 @@ pub struct Player {
 impl Player {
 	pub fn new(texture: Texture2D, gun_texture: Texture2D) -> Self {
 		Self {
+			dead: false,
+			health: MAX_HEALTH,
+			last_hit: 0.0,
+
 			position: vec2(GAME_W/2.0, GAME_H/2.0),
 			velocity: vec2(0.0, 0.0),
 
@@ -38,7 +54,38 @@ impl Player {
 		}
 	}
 
-	pub fn process(&mut self, delta: f32, time: f64, game_mouse_position: Vec2, projectiles: &mut Vec<Projectile>) {
+	pub fn process(&mut self, current_bug: &Bug, delta: f32, time: f64, game_mouse_position: Vec2, projectiles: &mut Vec<Projectile>, enemies: &Vec<Enemy>) {
+		// - death -
+		if time - self.last_hit <= IFRAMES {
+			// invulnerable
+
+			// setting sprite alpha
+			self.sprite.tint = Color::new(1.0, 1.0, 1.0, INVULNERABLE_ALPHA);
+		} else {
+			// vulnerable
+
+			// setting sprite alpha
+			self.sprite.tint = WHITE;
+
+			// checking hit
+			for e in enemies {
+				let player_center: Vec2 = vec2(self.position.x, self.position.y + COLLISION_Y_OFFSET);
+				let enemy_center: Vec2 = vec2(e.position.x, e.position.y + ENEMY_COLLISION_OFFSET);
+
+				if (enemy_center - player_center).length() > e.radius {continue;}
+
+				self.health -= 1;
+				self.last_hit = time;
+
+				if self.health <= 0 {
+					self.dead = true;
+					return;
+				}
+
+				break;
+			}
+		}
+
 		// - move -
 		let direction: Vec2 = vec2(
 			(if is_key_down(KeyCode::D) {1.0} else {0.0}) - (if is_key_down(KeyCode::A) {1.0} else {0.0}),
@@ -61,7 +108,11 @@ impl Player {
 		);
 
 		// - gun -
-		let aim_direction: Vec2 = (game_mouse_position - vec2(self.position.x, self.position.y + GUN_Y_OFFSET)).normalize_or_zero();
+		let mut aim_direction: Vec2 = (game_mouse_position - vec2(self.position.x, self.position.y + GUN_Y_OFFSET)).normalize_or_zero();
+		match current_bug {
+			Bug::BadAim => aim_direction = vec2(-aim_direction.y, aim_direction.x),
+			_ => {},
+		}
 
 		// shooting
 		if is_mouse_button_pressed(MouseButton::Left) {
