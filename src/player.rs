@@ -5,16 +5,16 @@ use crate::sprite::Sprite;
 use crate::projectile::Projectile;
 
 const SPEED: f32 = 80.0;
-const MAX_ACCEL: f32 = 400.0;
+const MAX_ACCEL: f32 = 600.0;
 
 const BREAK_ALIGNMENT: f32 = -0.1;
-const BREAK_STRENGTH: f32 = 2.0;
+const BREAK_STRENGTH: f32 = 2.5;
 
-const PROJ_SPAWN_Y_OFFSET: f32 = -4.0;
+const GUN_Y_OFFSET: f32 = -4.0;
 const PROJ_SPAWN_DIST: f32 = 4.0;
 
 pub struct Player {
-	position: Vec2,
+	pub position: Vec2,
 	velocity: Vec2,
 
 	speed: f32,
@@ -34,7 +34,7 @@ impl Player {
 			max_accel: MAX_ACCEL,
 
 			sprite: Sprite::new(texture, vec2(6.0, 11.0), WHITE),
-			gun_sprite: Sprite::new(gun_texture, vec2(-1.0, 4.0), WHITE),
+			gun_sprite: Sprite::new(gun_texture, vec2(-1.0, -GUN_Y_OFFSET), WHITE),
 		}
 	}
 
@@ -61,11 +61,11 @@ impl Player {
 		);
 
 		// - gun -
-		let aim_direction: Vec2 = (game_mouse_position - self.position).normalize_or_zero();
+		let aim_direction: Vec2 = (game_mouse_position - vec2(self.position.x, self.position.y + GUN_Y_OFFSET)).normalize_or_zero();
 
 		// shooting
 		if is_mouse_button_pressed(MouseButton::Left) {
-			let proj_position: Vec2 = vec2(self.position.x, self.position.y + PROJ_SPAWN_Y_OFFSET) + aim_direction * PROJ_SPAWN_DIST;
+			let proj_position: Vec2 = vec2(self.position.x, self.position.y + GUN_Y_OFFSET) + aim_direction * PROJ_SPAWN_DIST;
 			projectiles.push(Projectile::new(proj_position, aim_direction, time));
 		}
 

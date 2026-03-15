@@ -3,9 +3,11 @@ use macroquad::prelude::*;
 mod sprite;
 mod player;
 mod projectile;
+mod enemy;
 
 use player::Player;
 use projectile::Projectile;
+use enemy::EnemyManager;
 
 const TITLE: &'static str = "Mini Jam 206";
 
@@ -28,6 +30,8 @@ struct GameState {
 	player: Player,
 	projectiles: Vec<Projectile>,
 
+	enemies: EnemyManager,
+
 	bg_texture: Texture2D,
 }
 
@@ -41,6 +45,9 @@ impl GameState {
 
 		let gun_texture: Texture2D = load_texture("assets/gun.png").await.expect("should be able to load gun texture");
 		gun_texture.set_filter(FilterMode::Nearest);
+
+		let enemy_ball_texture: Texture2D = load_texture("assets/enemy_ball.png").await.expect("should be able to load enemy_ball texture");
+		enemy_ball_texture.set_filter(FilterMode::Nearest);
 
 		let mut state: Self = Self {
 			render_target: render_target(GAME_W as u32, GAME_H as u32),
@@ -58,8 +65,8 @@ impl GameState {
 			bg_texture,
 
 			player: Player::new(player_texture, gun_texture),
-
 			projectiles: Vec::new(),
+			enemies: EnemyManager::new(enemy_ball_texture),
 		};
 
 		state.render_target.texture.set_filter(FilterMode::Nearest);
@@ -71,11 +78,17 @@ impl GameState {
 	fn process(&mut self) {
 		self.player.process(self.delta, self.time, self.game_mouse_position, &mut self.projectiles);
 
+		// - projectiles -
+		// processing
 		for p in &mut self.projectiles {
 			p.process(self.delta, self.time);
 		}
 
+		// removing destroyed projectiles
 		self.projectiles.retain(|p| !p.destroy);
+		// --
+
+		self.enemies.process(self.delta, self.time, self.player.position);
 	}
 
 	fn render(&self) {
@@ -91,6 +104,7 @@ impl GameState {
 			p.render();
 		}
 
+		self.enemies.render();
 
 		// -- RENDERING TARGET TO SCREEN --
 
@@ -125,6 +139,8 @@ fn window_conf() -> Conf {
 
 #[macroquad::main(window_conf)]
 async fn main() {
+	macroquad::rand::srand(macroquad::miniquad::date::now() as _); // random seed
+
 	let mut state: GameState = GameState::new().await;
 
 	loop {
