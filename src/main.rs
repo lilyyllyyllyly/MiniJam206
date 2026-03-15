@@ -50,6 +50,8 @@ impl Bug {
 }
 
 struct GameState {
+	font: Font,
+
 	render_target: RenderTarget,
 	camera: Camera2D,
 
@@ -95,6 +97,8 @@ impl GameState {
 		enemy_ball_texture.set_filter(FilterMode::Nearest);
 
 		let mut state: Self = Self {
+			font: load_ttf_font("mousetrap2.ttf").await.expect("should be able to load mousetrap2 font"),
+
 			render_target: render_target(GAME_W as u32, GAME_H as u32),
 			camera: Camera2D::from_display_rect(Rect::new(0.0, 0.0, GAME_W, GAME_H)),
 
@@ -184,14 +188,51 @@ impl GameState {
 		self.player.render();
 
 		// ui
-		draw_text(format!("HP: {}", self.player.health).as_str(), 0.0,  9.0, 16.0, BLACK);
-		draw_text(format!("AMMO: {}", self.player.ammo).as_str(), 0.0, 18.0, 16.0, BLACK);
+		draw_text_ex(
+			format!("HP: {}", self.player.health).as_str(),
+			1.0, 6.0,
+			TextParams {
+				font: Some(&self.font),
+				font_size: 10,
+				color: BLACK,
+				..Default::default()
+			}
+		);
 
-		draw_text(format!("SCORE: {}", self.score*10).as_str(), 0.0, GAME_H-1.0, 16.0, BLACK);
+		draw_text_ex(
+			format!("AMMO: {}", self.player.ammo).as_str(),
+			1.0, 12.0,
+			TextParams {
+				font: Some(&self.font),
+				font_size: 10,
+				color: BLACK,
+				..Default::default()
+			}
+		);
+
+		draw_text_ex(
+			format!("SCORE: {}", self.score*10).as_str(),
+			1.0, GAME_H - 1.0,
+			TextParams {
+				font: Some(&self.font),
+				font_size: 10,
+				color: BLACK,
+				..Default::default()
+			}
+		);
 
 		let bug_text: String = format!("BUG: {}", self.current_bug.name());
-		let bug_text_width: f32 = measure_text(bug_text.as_str(), None, 16, 1.0).width;
-		draw_text(bug_text.as_str(), (GAME_W - bug_text_width)/2.0, 27.0, 16.0, Color::new(0.0, 0.0, 0.0, 1.0 - ((self.time - self.last_bug_change)/BUG_TEXT_TIME) as f32));
+		let bug_text_width: f32 = measure_text(bug_text.as_str(), Some(&self.font), 10, 1.0).width;
+		draw_text_ex(
+			bug_text.as_str(),
+			((GAME_W - bug_text_width)/2.0).floor(), 18.0,
+			TextParams {
+				font: Some(&self.font),
+				font_size: 10,
+				color: Color::new(0.0, 0.0, 0.0, 1.0 - ((self.time - self.last_bug_change)/BUG_TEXT_TIME) as f32),
+				..Default::default()
+			}
+		);
 
 
 		// -- RENDERING TARGET TO SCREEN --
