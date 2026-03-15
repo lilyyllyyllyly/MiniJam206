@@ -41,10 +41,12 @@ pub struct Player {
 
 	sprite: Sprite,
 	gun_sprite: Sprite,
+
+	bullet_texture: Texture2D,
 }
 
 impl Player {
-	pub fn new(texture: Texture2D, gun_texture: Texture2D) -> Self {
+	pub fn new(texture: Texture2D, gun_texture: Texture2D, bullet_texture: Texture2D) -> Self {
 		Self {
 			dead: false,
 			health: MAX_HEALTH,
@@ -61,6 +63,8 @@ impl Player {
 
 			sprite: Sprite::new(texture, vec2(6.0, 11.0), WHITE),
 			gun_sprite: Sprite::new(gun_texture, vec2(-1.0, -GUN_Y_OFFSET), WHITE),
+
+			bullet_texture,
 		}
 	}
 
@@ -97,15 +101,10 @@ impl Player {
 		}
 
 		// - move -
-		let mut direction: Vec2 = vec2(
+		let direction: Vec2 = vec2(
 			(if is_key_down(KeyCode::D) {1.0} else {0.0}) - (if is_key_down(KeyCode::A) {1.0} else {0.0}),
 			(if is_key_down(KeyCode::S) {1.0} else {0.0}) - (if is_key_down(KeyCode::W) {1.0} else {0.0}),
 		).normalize_or_zero();
-
-		match current_bug {
-			Bug::Inverted => direction = -direction,
-			_ => {},
-		}
 
 		let goal_vel: Vec2 = direction * self.speed;
 
@@ -136,7 +135,7 @@ impl Player {
 
 		if is_mouse_button_down(MouseButton::Left) && time - self.last_shot >= SHOOT_DELAY && self.ammo > 0 {
 			let proj_position: Vec2 = vec2(self.position.x, self.position.y + GUN_Y_OFFSET) + aim_direction * PROJ_SPAWN_DIST;
-			projectiles.push(Projectile::new(proj_position, aim_direction, time));
+			projectiles.push(Projectile::new(proj_position, aim_direction, time, self.bullet_texture.clone()));
 
 			self.ammo -= 1;
 			self.last_shot = time;
@@ -146,11 +145,20 @@ impl Player {
 		self.gun_sprite.rotation = aim_direction.y.atan2(aim_direction.x);
 		self.gun_sprite.flip_y = aim_direction.x < 0.0;
 
+		// - sprite -
+		self.sprite.process(time);
+		self.gun_sprite.process(time);
+
 	}
 
-	pub fn render(&self) {
-		self.sprite.render(self.position.x, self.position.y);
-		self.gun_sprite.render(self.position.x, self.position.y - 4.0);
+	pub fn render(&self, current_bug: &Bug) {
+		self.sprite.render(current_bug, self.position.x, self.position.y);
+		self.gun_sprite.render(current_bug, self.position.x, self.position.y - 4.0);
+
+		//match current_bug {
+		//	Bug::Corrupted => draw_circle(self.position.x, self.position.y + COLLISION_Y_OFFSET, 1.0, Color::new(0.1, 0.4, 1.0, 0.75)), // debug collision
+		//	_ => {},
+		//}
 	}
 }
 

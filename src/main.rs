@@ -1,5 +1,5 @@
 use macroquad::prelude::*;
-use macroquad::rand::ChooseRandom;
+use macroquad::rand::{ChooseRandom, gen_range};
 
 mod sprite;
 mod player;
@@ -22,17 +22,24 @@ const BUG_CHANGE_TIME_INTERVAL: f64 = 15.0;
 const BUG_CHANGE_TIME_DECREMENT: f64 = 1.0;
 const BUG_CHANGE_TIME_MIN: f64 = 2.0;
 
+const BG_CORRUPTED_TINT_MIN: f32 = 0.7;
+const BG_CORRUPTED_TINT_MAX: f32 = 1.0;
+const BG_CORRUPTED_TINT_TIME: f64 = 2.5;
+
 #[derive(Copy, Clone)]
 enum Bug {
+	None,
 	BadAim,
 	Inverted,
 	Paint,
+	Corrupted,
 }
 
-static BUGS: [Bug; 3] = [
+static BUGS: [Bug; 4] = [
 	Bug::BadAim,
 	Bug::Inverted,
 	Bug::Paint,
+	Bug::Corrupted,
 ];
 
 impl Bug {
@@ -42,9 +49,11 @@ impl Bug {
 
 	fn name(&self) -> &'static str {
 		match self {
+			Bug::None => "NONE (um actual bug what)",
 			Bug::BadAim => "BAD AIM",
 			Bug::Inverted => "INVERTED",
 			Bug::Paint => "PAINT",
+			Bug::Corrupted => "CORRUPTED",
 		}
 	}
 }
@@ -79,11 +88,14 @@ struct GameState {
 	bug_change_time: f64,
 	last_bug_time_decrease: f64,
 
+	last_bg_corrupt: f64,
+	bg_corrupt_tint: Color,
+
 	bg_texture: Texture2D,
 }
 
 impl GameState {
-	async fn new() -> Self {
+	async fn new(start_time: f64) -> Self {
 		let bg_texture: Texture2D = load_texture("assets/bg.png").await.expect("should be able to load bg texture");
 		bg_texture.set_filter(FilterMode::Nearest);
 
@@ -92,6 +104,9 @@ impl GameState {
 
 		let gun_texture: Texture2D = load_texture("assets/gun.png").await.expect("should be able to load gun texture");
 		gun_texture.set_filter(FilterMode::Nearest);
+
+		let bullet_texture: Texture2D = load_texture("assets/bullet.png").await.expect("should be able to load bullet texture");
+		bullet_texture.set_filter(FilterMode::Nearest);
 
 		let enemy_ball_texture: Texture2D = load_texture("assets/enemy_ball.png").await.expect("should be able to load enemy_ball texture");
 		enemy_ball_texture.set_filter(FilterMode::Nearest);
@@ -111,19 +126,22 @@ impl GameState {
 			first_frame: true,
 
 			delta: 0.0,
-			time: 0.0,
+			time: start_time,
 
-			player: Player::new(player_texture, gun_texture),
+			player: Player::new(player_texture, gun_texture, bullet_texture),
 			projectiles: Vec::new(),
 			enemies: EnemyManager::new(enemy_ball_texture),
 
 			score: 0,
 
-			current_bug: Bug::random(),
-			last_bug_change: 0.0,
+			current_bug: Bug::None,
+			last_bug_change: start_time,
 
 			bug_change_time: INITIAL_BUG_CHANGE_TIME,
 			last_bug_time_decrease: 0.0,
+
+			last_bg_corrupt: 0.0,
+			bg_corrupt_tint: WHITE,
 
 			bg_texture,
 		};
@@ -135,6 +153,7 @@ impl GameState {
 	}
 
 	fn process(&mut self) -> Result<(), ()> {
+		// - updating bug -
 		if self.time - self.last_bug_change >= self.bug_change_time {
 			self.current_bug = Bug::random();
 			self.last_bug_change = self.time;
@@ -145,6 +164,18 @@ impl GameState {
 			self.last_bug_time_decrease = self.time;
 		}
 
+		// - bg corrupt
+		if self.time - self.last_bg_corrupt >= BG_CORRUPTED_TINT_TIME {
+			self.bg_corrupt_tint = Color::new(
+				gen_range(BG_CORRUPTED_TINT_MIN, BG_CORRUPTED_TINT_MAX),
+				gen_range(BG_CORRUPTED_TINT_MIN, BG_CORRUPTED_TINT_MAX),
+				gen_range(BG_CORRUPTED_TINT_MIN, BG_CORRUPTED_TINT_MAX),
+				1.0,
+			);
+			self.last_bg_corrupt = self.time;
+		}
+
+		// - main stuff -
 		self.player.process(&self.current_bug, self.delta, self.time, self.game_mouse_position, &mut self.projectiles, &self.enemies.enemies /* ha enemies.enemies */);
 		if self.player.dead {return Err(());}
 
@@ -168,10 +199,11 @@ impl GameState {
 
 		set_camera(&self.camera);
 
-		// main stuff
+		// - main stuff -
 		if !self.first_frame {
 			match self.current_bug {
 				Bug::Paint => {},
+				Bug::Corrupted => draw_texture(&self.bg_texture, 0.0, 0.0, self.bg_corrupt_tint),
 				_ => draw_texture(&self.bg_texture, 0.0, 0.0, WHITE),
 			}
 		} else {
@@ -180,14 +212,14 @@ impl GameState {
 		}
 
 		for p in &self.projectiles {
-			p.render();
+			p.render(&self.current_bug);
 		}
 
-		self.enemies.render();
+		self.enemies.render(&self.current_bug);
 
-		self.player.render();
+		self.player.render(&self.current_bug);
 
-		// ui
+		// - ui -
 		draw_text_ex(
 			format!("HP: {}", self.player.health).as_str(),
 			1.0, 6.0,
@@ -211,7 +243,7 @@ impl GameState {
 		);
 
 		draw_text_ex(
-			format!("SCORE: {}", self.score*10).as_str(),
+			format!("SCORE: {}", self.score).as_str(),
 			1.0, GAME_H - 1.0,
 			TextParams {
 				font: Some(&self.font),
@@ -221,18 +253,23 @@ impl GameState {
 			}
 		);
 
-		let bug_text: String = format!("BUG: {}", self.current_bug.name());
-		let bug_text_width: f32 = measure_text(bug_text.as_str(), Some(&self.font), 10, 1.0).width;
-		draw_text_ex(
-			bug_text.as_str(),
-			((GAME_W - bug_text_width)/2.0).floor(), 18.0,
-			TextParams {
-				font: Some(&self.font),
-				font_size: 10,
-				color: Color::new(0.0, 0.0, 0.0, 1.0 - ((self.time - self.last_bug_change)/BUG_TEXT_TIME) as f32),
-				..Default::default()
-			}
-		);
+		match self.current_bug {
+			Bug::None => {},
+			_ => {
+				let bug_text: String = format!("BUG: {}", self.current_bug.name());
+				let bug_text_width: f32 = measure_text(bug_text.as_str(), Some(&self.font), 10, 1.0).width;
+				draw_text_ex(
+					bug_text.as_str(),
+					((GAME_W - bug_text_width)/2.0).floor(), 18.0,
+					TextParams {
+						font: Some(&self.font),
+						font_size: 10,
+						color: Color::new(0.0, 0.0, 0.0, 1.0 - ((self.time - self.last_bug_change)/BUG_TEXT_TIME) as f32),
+						..Default::default()
+					}
+				);
+			},
+		}
 
 
 		// -- RENDERING TARGET TO SCREEN --
@@ -240,13 +277,19 @@ impl GameState {
 		set_default_camera();
 		clear_background(BLACK);
 
+		// inverted screen bug
+		let (flip_x, flip_y): (bool, bool) = match self.current_bug {
+			Bug::Inverted => (true, false),
+			_ => (false, true),
+		};
+
 		draw_texture_ex(
 			&self.render_target.texture,
 			self.render_area_origin.x, self.render_area_origin.y,
 			WHITE,
 			DrawTextureParams {
 				dest_size: Some(vec2(GAME_W, GAME_H) * self.render_area_scale),
-				flip_y: true,
+				flip_x, flip_y,
 				..Default::default()
 			},
 		);
@@ -270,9 +313,21 @@ fn window_conf() -> Conf {
 async fn main() {
 	macroquad::rand::srand(macroquad::miniquad::date::now() as _); // random seed
 
-	let mut state: GameState = GameState::new().await;
+	let mut menu: bool = true;
+	let mut last_menu: bool = true;
+
+	let mut state: GameState = GameState::new(0.0).await;
+
+	let mut highscore: u32 = 0;
+	let mut lastscore: u32 = 0;
 
 	loop {
+		if last_menu && !menu {
+			state = GameState::new(state.time).await;
+		}
+		last_menu = menu;
+
+		// setting state variables
 		state.delta = get_frame_time();
 		state.time = get_time();
 
@@ -289,14 +344,97 @@ async fn main() {
 		state.render_mouse_position = vec2(mouse_position().0, mouse_position().1);
 		state.game_mouse_position = (state.render_mouse_position - state.render_area_origin) / state.render_area_scale;
 
-		if state.process().is_err() {
-			state = GameState::new().await;
-			continue;
+
+		if menu {
+			if is_key_pressed(KeyCode::Space) {
+				menu = false;
+				continue;
+			}
+
+			set_camera(&state.camera);
+			clear_background(BLACK);
+
+			let title_text_width: f32 = measure_text(TITLE, Some(&state.font), 10, 1.0).width;
+			draw_text_ex(
+				TITLE,
+				((GAME_W-title_text_width)/2.0).floor(), 18.0,
+				TextParams {
+					font: Some(&state.font),
+					font_size: 10,
+					..Default::default()
+				},
+			);
+
+			let play_text_width: f32 = measure_text("PLAY", Some(&state.font), 10, 1.0).width;
+			draw_text_ex(
+				"PLAY",
+				((GAME_W-play_text_width)/2.0).floor(), GAME_H/2.0,
+				TextParams {
+					font: Some(&state.font),
+					font_size: 10,
+					..Default::default()
+				},
+			);
+
+			draw_text_ex(
+				format!("LAST SCORE: {}", lastscore).as_str(),
+				1.0, GAME_H-7.0,
+				TextParams {
+					font: Some(&state.font),
+					font_size: 10,
+					..Default::default()
+				},
+			);
+
+			draw_text_ex(
+				format!("HIGHSCORE: {}", highscore).as_str(),
+				1.0, GAME_H-1.0,
+				TextParams {
+					font: Some(&state.font),
+					font_size: 10,
+					..Default::default()
+				},
+			);
+
+			// -- RENDERING TARGET TO SCREEN --
+
+			set_default_camera();
+			clear_background(BLACK);
+
+			draw_texture_ex(
+				&state.render_target.texture,
+				state.render_area_origin.x, state.render_area_origin.y,
+				WHITE,
+				DrawTextureParams {
+					dest_size: Some(vec2(GAME_W, GAME_H) * state.render_area_scale),
+					flip_y: true,
+					..Default::default()
+				},
+			);
+
+		} else {
+			// fix mouse position on inverted bug (should only affect movement)
+			match state.current_bug {
+				Bug::Inverted => state.game_mouse_position = vec2(GAME_W, GAME_H) - state.game_mouse_position,
+				_ => {},
+			}
+
+			// process and render
+			if state.process().is_err() {
+				lastscore = state.score;
+				if lastscore > highscore {
+					highscore = lastscore;
+				}
+				menu = true;
+				continue;
+			}
+
+			state.render();
+			// -
+
+			state.first_frame = false;
 		}
 
-		state.render();
-
-		state.first_frame = false;
 		next_frame().await;
 	}
 }

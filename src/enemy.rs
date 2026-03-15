@@ -1,7 +1,7 @@
 use macroquad::prelude::*;
 use macroquad::rand::{gen_range};
 
-use crate::{GAME_W, GAME_H};
+use crate::{Bug, GAME_W, GAME_H};
 use crate::sprite::Sprite;
 use crate::projectile::Projectile;
 
@@ -69,7 +69,7 @@ impl Enemy {
 
 		if self.health <= 0 {
 			self.destroy = true;
-			*score += 1;
+			*score += 10;
 			return;
 		}
 
@@ -84,11 +84,18 @@ impl Enemy {
 		self.position += self.velocity * delta;
 
 		self.velocity = self.velocity.clamp_length_max(f32::max(self.velocity.length() - DASH_FALLOFF * delta, 0.0));
+
+		// - sprite -
+		self.sprite.process(time);
 	}
 
-	pub fn render(&self) {
-		self.sprite.render(self.position.x, self.position.y);
-		//draw_circle_lines(self.position.x, self.position.y + COLLISION_Y_OFFSET, self.radius, 1.0, Color::new(0.1, 0.4, 1.0, 0.75)); // debug collision
+	pub fn render(&self, current_bug: &Bug) {
+		self.sprite.render(current_bug, self.position.x, self.position.y);
+
+		//match current_bug {
+		//	Bug::Corrupted => draw_circle_lines(self.position.x, self.position.y + COLLISION_Y_OFFSET, self.radius, 1.0, Color::new(0.1, 0.4, 1.0, 0.75)), // debug collision
+		//	_ => {},
+		//}
 	}
 }
 
@@ -170,9 +177,9 @@ impl EnemyManager {
 		self.enemies.retain(|e| !e.destroy);
 	}
 
-	pub fn render(&self) {
+	pub fn render(&self, current_bug: &Bug) {
 		for e in &self.enemies {
-			e.render();
+			e.render(current_bug);
 		}
 	}
 }
