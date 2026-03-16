@@ -91,39 +91,36 @@ impl Sprite {
 		self.last_corrupt = time + self.corrupt_time_offset;
 	}
 
-	pub fn render(&self, current_bug: &Bug, x: f32, y: f32) {
-		match current_bug {
-			Bug::Corrupted => {
-				let source_size = self.texture.size() * self.source_corrupt;
-				draw_texture_ex(
-					&self.texture,
-					x - self.pivot.x + self.pivot_corrupt.x, y - self.pivot.y + self.pivot_corrupt.y,
-					self.tint_corrupt,
-					DrawTextureParams {
-						dest_size: Some(self.texture.size() * self.scale_corrupt),
-						source: Some(Rect::new(0.0, 0.0, source_size.x, source_size.y)),
-						rotation: self.rotation,
-						pivot: Some(vec2(x, y) + self.rotation_offset),
-						flip_x: self.flip_x_corrupt,
-						flip_y: self.flip_y_corrupt,
-						..Default::default()
-					}
-				);
-			}
-			_ => {
-				draw_texture_ex(
-					&self.texture,
-					x - self.pivot.x, y - self.pivot.y,
-					self.tint,
-					DrawTextureParams {
-						rotation: self.rotation,
-						pivot: Some(vec2(x, y) + self.rotation_offset),
-						flip_x: self.flip_x,
-						flip_y: self.flip_y,
-						..Default::default()
-					}
-				);
-			},
+	pub fn render(&self, current_bugs: &Vec<Bug>, x: f32, y: f32) {
+		if current_bugs.contains(&Bug::Corrupted) {
+			let source_size = self.texture.size() * self.source_corrupt;
+			draw_texture_ex(
+				&self.texture,
+				x - self.pivot.x + self.pivot_corrupt.x, y - self.pivot.y + self.pivot_corrupt.y,
+				self.tint_corrupt,
+				DrawTextureParams {
+					dest_size: Some(self.texture.size() * self.scale_corrupt),
+					source: Some(Rect::new(0.0, 0.0, source_size.x, source_size.y)),
+					rotation: self.rotation,
+					pivot: Some(vec2(x, y) + self.rotation_offset),
+					flip_x: self.flip_x_corrupt,
+					flip_y: self.flip_y_corrupt,
+					..Default::default()
+				}
+			);
+		} else {
+			draw_texture_ex(
+				&self.texture,
+				x - self.pivot.x, y - self.pivot.y,
+				self.tint,
+				DrawTextureParams {
+					rotation: self.rotation,
+					pivot: Some(vec2(x, y) + self.rotation_offset),
+					flip_x: self.flip_x,
+					flip_y: self.flip_y,
+					..Default::default()
+				}
+			);
 		}
 	}
 }

@@ -41,13 +41,8 @@ impl Projectile {
 		self.sprite.process(time);
 	}
 
-	pub fn render(&self, current_bug: &Bug) {
-		self.sprite.render(current_bug, self.position.x, self.position.y);
-
-		//match current_bug {
-		//	Bug::Corrupted => draw_circle(self.position.x, self.position.y, 1.0, Color::new(0.1, 0.4, 1.0, 0.75)), // debug collision
-		//	_ => {},
-		//}
+	pub fn render(&self, current_bugs: &Vec<Bug>) {
+		self.sprite.render(current_bugs, self.position.x, self.position.y);
 	}
 }
 

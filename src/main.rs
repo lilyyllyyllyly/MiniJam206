@@ -1,3 +1,5 @@
+use std::cmp::Eq;
+
 use macroquad::prelude::*;
 use macroquad::rand::{ChooseRandom, gen_range};
 
@@ -15,18 +17,25 @@ const TITLE: &'static str = "wild_west_prototype_v0.1.0";
 const GAME_W: f32 = 128.0;
 const GAME_H: f32 = 128.0;
 
-const INITIAL_BUG_CHANGE_TIME: f64 = 10.0;
-const BUG_TEXT_TIME: f64 = 2.0;
+const LEVEL_COUNT: usize = 5;
+const LEVEL_TIME: f64 = 34.0;
 
-const BUG_CHANGE_TIME_INTERVAL: f64 = 15.0;
-const BUG_CHANGE_TIME_DECREMENT: f64 = 1.0;
-const BUG_CHANGE_TIME_MIN: f64 = 2.0;
+const DOUBLE_BUG_LEVEL: usize = 2;
+
+const BUG_TEXT_TIME: f64 = 2.0;
+static BUG_CHANGE_TIMES: [f64; LEVEL_COUNT] = [
+	10.0,
+	7.0,
+	7.0,
+	6.0,
+	5.0,
+];
 
 const BG_CORRUPTED_TINT_MIN: f32 = 0.7;
 const BG_CORRUPTED_TINT_MAX: f32 = 1.0;
 const BG_CORRUPTED_TINT_TIME: f64 = 2.5;
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq, Eq)]
 enum Bug {
 	None,
 	BadAim,
@@ -82,11 +91,11 @@ struct GameState {
 
 	score: u32,
 
-	current_bug: Bug,
-	last_bug_change: f64,
+	level: usize,
+	last_level_change: f64,
 
-	bug_change_time: f64,
-	last_bug_time_decrease: f64,
+	current_bugs: Vec<Bug>,
+	last_bug_change: f64,
 
 	last_bg_corrupt: f64,
 	bg_corrupt_tint: Color,
@@ -130,15 +139,15 @@ impl GameState {
 
 			player: Player::new(player_texture, gun_texture, bullet_texture),
 			projectiles: Vec::new(),
-			enemies: EnemyManager::new(enemy_ball_texture),
+			enemies: EnemyManager::new(enemy_ball_texture, start_time),
 
 			score: 0,
 
-			current_bug: Bug::None,
-			last_bug_change: start_time,
+			level: 0,
+			last_level_change: start_time,
 
-			bug_change_time: INITIAL_BUG_CHANGE_TIME,
-			last_bug_time_decrease: 0.0,
+			current_bugs: vec!(Bug::None),
+			last_bug_change: start_time,
 
 			last_bg_corrupt: 0.0,
 			bg_corrupt_tint: WHITE,
@@ -153,15 +162,20 @@ impl GameState {
 	}
 
 	fn process(&mut self) -> Result<(), ()> {
-		// - updating bug -
-		if self.time - self.last_bug_change >= self.bug_change_time {
-			self.current_bug = Bug::random();
-			self.last_bug_change = self.time;
+		// - updating level -
+		if self.level < LEVEL_COUNT-1 && self.time - self.last_level_change >= LEVEL_TIME {
+			self.level += 1;
+			if self.level == DOUBLE_BUG_LEVEL {self.current_bugs.push(Bug::None)}
+			self.last_level_change = self.time;
 		}
 
-		if self.time - self.last_bug_time_decrease >= BUG_CHANGE_TIME_INTERVAL {
-			self.bug_change_time = f64::max(BUG_CHANGE_TIME_MIN, self.bug_change_time - BUG_CHANGE_TIME_DECREMENT);
-			self.last_bug_time_decrease = self.time;
+		// - updating bug -
+		if self.time - self.last_bug_change >= BUG_CHANGE_TIMES[self.level] {
+			for i in 0..self.current_bugs.len() {
+				self.current_bugs[i] = Bug::random();
+			}
+
+			self.last_bug_change = self.time;
 		}
 
 		// - bg corrupt
@@ -176,10 +190,10 @@ impl GameState {
 		}
 
 		// - main stuff -
-		self.player.process(&self.current_bug, self.delta, self.time, self.game_mouse_position, &mut self.projectiles, &self.enemies.enemies /* ha enemies.enemies */);
+		self.player.process(&self.current_bugs, self.delta, self.time, self.game_mouse_position, &mut self.projectiles, &self.enemies.enemies /* ha enemies.enemies */);
 		if self.player.dead {return Err(());}
 
-		self.enemies.process(self.delta, self.time, self.player.position, &mut self.projectiles, &mut self.score);
+		self.enemies.process(self.level, self.delta, self.time, self.player.position, &mut self.projectiles, &mut self.score);
 
 		// - projectiles -
 		// processing
@@ -200,24 +214,19 @@ impl GameState {
 		set_camera(&self.camera);
 
 		// - main stuff -
-		if !self.first_frame {
-			match self.current_bug {
-				Bug::Paint => {},
-				Bug::Corrupted => draw_texture(&self.bg_texture, 0.0, 0.0, self.bg_corrupt_tint),
-				_ => draw_texture(&self.bg_texture, 0.0, 0.0, WHITE),
-			}
-		} else {
+		if self.first_frame || !self.current_bugs.contains(&Bug::Paint) {
 			// gotta draw the background at least once in case Paint falls first
-			draw_texture(&self.bg_texture, 0.0, 0.0, WHITE);
+			let tint: Color = if self.current_bugs.contains(&Bug::Corrupted) {self.bg_corrupt_tint} else {WHITE};
+			draw_texture(&self.bg_texture, 0.0, 0.0, tint);
 		}
 
 		for p in &self.projectiles {
-			p.render(&self.current_bug);
+			p.render(&self.current_bugs);
 		}
 
-		self.enemies.render(&self.current_bug);
+		self.enemies.render(&self.current_bugs);
 
-		self.player.render(&self.current_bug);
+		self.player.render(&self.current_bugs);
 
 		// - ui -
 		draw_text_ex(
@@ -253,22 +262,34 @@ impl GameState {
 			}
 		);
 
-		match self.current_bug {
-			Bug::None => {},
-			_ => {
-				let bug_text: String = format!("BUG: {}", self.current_bug.name());
-				let bug_text_width: f32 = measure_text(bug_text.as_str(), Some(&self.font), 10, 1.0).width;
-				draw_text_ex(
-					bug_text.as_str(),
-					((GAME_W - bug_text_width)/2.0).floor(), 18.0,
-					TextParams {
-						font: Some(&self.font),
-						font_size: 10,
-						color: Color::new(0.0, 0.0, 0.0, 1.0 - ((self.time - self.last_bug_change)/BUG_TEXT_TIME) as f32),
-						..Default::default()
-					}
-				);
-			},
+		let level_text: String = format!("LEVEL: {}", self.level+1);
+		let level_text_width: f32 = measure_text(level_text.as_str(), Some(&self.font), 10, 1.0).width;
+		draw_text_ex(
+			level_text.as_str(),
+			((GAME_W-level_text_width)/2.0).floor(), 6.0,
+			TextParams {
+				font: Some(&self.font),
+				font_size: 10,
+				color: BLACK,
+				..Default::default()
+			}
+		);
+
+		for (i, &b) in self.current_bugs.iter().enumerate() {
+			if b == Bug::None {continue;}
+
+			let bug_text: String = format!("BUG: {}", b.name());
+			let bug_text_width: f32 = measure_text(bug_text.as_str(), Some(&self.font), 10, 1.0).width;
+			draw_text_ex(
+				bug_text.as_str(),
+				((GAME_W - bug_text_width)/2.0).floor(), 18.0 + 6.0 * i as f32,
+				TextParams {
+					font: Some(&self.font),
+					font_size: 10,
+					color: Color::new(0.0, 0.0, 0.0, 1.0 - ((self.time - self.last_bug_change)/BUG_TEXT_TIME) as f32),
+					..Default::default()
+				}
+			);
 		}
 
 
@@ -278,10 +299,7 @@ impl GameState {
 		clear_background(BLACK);
 
 		// inverted screen bug
-		let (flip_x, flip_y): (bool, bool) = match self.current_bug {
-			Bug::Inverted => (true, false),
-			_ => (false, true),
-		};
+		let (flip_x, flip_y): (bool, bool) = if self.current_bugs.contains(&Bug::Inverted) {(true, false)} else {(false, true)};
 
 		draw_texture_ex(
 			&self.render_target.texture,
@@ -320,6 +338,8 @@ async fn main() {
 
 	let mut highscore: u32 = 0;
 	let mut lastscore: u32 = 0;
+	let mut highlevel: usize = 0;
+	let mut lastlevel: usize = 0;
 
 	loop {
 		if last_menu && !menu {
@@ -377,7 +397,7 @@ async fn main() {
 			);
 
 			draw_text_ex(
-				format!("LAST SCORE: {}", lastscore).as_str(),
+				format!("LAST SCORE: {} (LEVEL {})", lastscore, lastlevel + 1).as_str(),
 				1.0, GAME_H-7.0,
 				TextParams {
 					font: Some(&state.font),
@@ -387,7 +407,7 @@ async fn main() {
 			);
 
 			draw_text_ex(
-				format!("HIGHSCORE: {}", highscore).as_str(),
+				format!("HIGHSCORE: {} (LEVEL {})", highscore, highlevel + 1).as_str(),
 				1.0, GAME_H-1.0,
 				TextParams {
 					font: Some(&state.font),
@@ -414,17 +434,19 @@ async fn main() {
 
 		} else {
 			// fix mouse position on inverted bug (should only affect movement)
-			match state.current_bug {
-				Bug::Inverted => state.game_mouse_position = vec2(GAME_W, GAME_H) - state.game_mouse_position,
-				_ => {},
+			if state.current_bugs.contains(&Bug::Inverted) {
+				state.game_mouse_position = vec2(GAME_W, GAME_H) - state.game_mouse_position;
 			}
 
 			// process and render
 			if state.process().is_err() {
 				lastscore = state.score;
+				lastlevel = state.level;
 				if lastscore > highscore {
 					highscore = lastscore;
+					highlevel = lastlevel;
 				}
+
 				menu = true;
 				continue;
 			}

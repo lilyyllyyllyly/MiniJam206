@@ -1,7 +1,7 @@
 use macroquad::prelude::*;
 use macroquad::rand::{gen_range};
 
-use crate::{Bug, GAME_W, GAME_H};
+use crate::{Bug, LEVEL_COUNT, GAME_W, GAME_H};
 use crate::sprite::Sprite;
 use crate::projectile::Projectile;
 
@@ -16,12 +16,39 @@ const DASH_STRENGTH: f32 = 60.0;
 const DASH_FALLOFF: f32 = 60.0;
 
 // manager consts
-const SPAWN_TIME_MIN: f64 = 3.0;
-const SPAWN_TIME_MAX: f64 = 4.0;
 const INITIAL_SPAWN_TIME: f64 = 1.0;
 
-const INITIAL_TRIPLE_SPAWN_CHANCE: f32 = 0.0; // great names
-const INITIAL_DOUBLE_SPAWN_CHANCE: f32 = 0.3;
+static SPAWN_TIME_MIN: [f64; LEVEL_COUNT] = [
+	5.0,
+	3.5,
+	3.5,
+	3.0,
+	2.0,
+];
+
+static SPAWN_TIME_MAX: [f64; LEVEL_COUNT] = [
+	5.0,
+	4.0,
+	4.0,
+	4.0,
+	3.0,
+];
+
+static TRIPLE_SPAWN_CHANCE: [f32; LEVEL_COUNT] = [
+	0.0,
+	0.1,
+	0.1,
+	0.2,
+	0.2,
+];
+
+static DOUBLE_SPAWN_CHANCE: [f32; LEVEL_COUNT] = [
+	0.3,
+	0.4,
+	0.4,
+	0.5,
+	0.5,
+];
 
 // shouldve made separate files, oh well
 
@@ -89,13 +116,8 @@ impl Enemy {
 		self.sprite.process(time);
 	}
 
-	pub fn render(&self, current_bug: &Bug) {
-		self.sprite.render(current_bug, self.position.x, self.position.y);
-
-		//match current_bug {
-		//	Bug::Corrupted => draw_circle_lines(self.position.x, self.position.y + COLLISION_Y_OFFSET, self.radius, 1.0, Color::new(0.1, 0.4, 1.0, 0.75)), // debug collision
-		//	_ => {},
-		//}
+	pub fn render(&self, current_bugs: &Vec<Bug>) {
+		self.sprite.render(current_bugs, self.position.x, self.position.y);
 	}
 }
 
@@ -105,22 +127,16 @@ pub struct EnemyManager {
 	last_spawn: f64,
 	next_spawn_time: f64,
 
-	double_spawn_chance: f32,
-	triple_spawn_chance: f32,
-
 	enemy_ball_texture: Texture2D,
 }
 
 impl EnemyManager {
-	pub fn new(enemy_ball_texture: Texture2D) -> Self {
+	pub fn new(enemy_ball_texture: Texture2D, time: f64) -> Self {
 		Self {
 			enemies: Vec::new(),
 
-			last_spawn: 0.0,
+			last_spawn: time,
 			next_spawn_time: INITIAL_SPAWN_TIME,
-
-			double_spawn_chance: INITIAL_DOUBLE_SPAWN_CHANCE,
-			triple_spawn_chance: INITIAL_TRIPLE_SPAWN_CHANCE,
 
 			enemy_ball_texture,
 		}
@@ -149,13 +165,13 @@ impl EnemyManager {
 		));
 	}
 
-	pub fn process(&mut self, delta: f32, time: f64, player_position: Vec2, projectiles: &mut Vec<Projectile>, score: &mut u32) {
+	pub fn process(&mut self, level: usize, delta: f32, time: f64, player_position: Vec2, projectiles: &mut Vec<Projectile>, score: &mut u32) {
 		// - spawning -
 		if time - self.last_spawn >= self.next_spawn_time {
 			let r: f32 = gen_range(0.0, 1.0);
-			let count: u32 = if r < self.triple_spawn_chance {
+			let count: u32 = if r < TRIPLE_SPAWN_CHANCE[level] {
 				3
-			} else if r < self.double_spawn_chance {
+			} else if r < DOUBLE_SPAWN_CHANCE[level] {
 				2
 			} else {
 				1
@@ -166,7 +182,7 @@ impl EnemyManager {
 			}
 
 			self.last_spawn = time;
-			self.next_spawn_time = gen_range(SPAWN_TIME_MIN, SPAWN_TIME_MAX);
+			self.next_spawn_time = gen_range(SPAWN_TIME_MIN[level], SPAWN_TIME_MAX[level]);
 		}
 
 		// - processing enemies -
@@ -177,9 +193,9 @@ impl EnemyManager {
 		self.enemies.retain(|e| !e.destroy);
 	}
 
-	pub fn render(&self, current_bug: &Bug) {
+	pub fn render(&self, current_bugs: &Vec<Bug>) {
 		for e in &self.enemies {
-			e.render(current_bug);
+			e.render(current_bugs);
 		}
 	}
 }

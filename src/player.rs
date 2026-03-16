@@ -68,7 +68,7 @@ impl Player {
 		}
 	}
 
-	pub fn process(&mut self, current_bug: &Bug, delta: f32, time: f64, game_mouse_position: Vec2, projectiles: &mut Vec<Projectile>, enemies: &Vec<Enemy>) {
+	pub fn process(&mut self, current_bugs: &Vec<Bug>, delta: f32, time: f64, game_mouse_position: Vec2, projectiles: &mut Vec<Projectile>, enemies: &Vec<Enemy>) {
 		// - death -
 		if time - self.last_hit <= IFRAMES {
 			// invulnerable
@@ -123,9 +123,8 @@ impl Player {
 
 		// - gun -
 		let mut aim_direction: Vec2 = (game_mouse_position - vec2(self.position.x, self.position.y + GUN_Y_OFFSET)).normalize_or_zero();
-		match current_bug {
-			Bug::BadAim => aim_direction = vec2(-aim_direction.y, aim_direction.x),
-			_ => {},
+		if current_bugs.contains(&Bug::BadAim) {
+			aim_direction = vec2(-aim_direction.y, aim_direction.x);
 		}
 
 		// shooting
@@ -151,14 +150,9 @@ impl Player {
 
 	}
 
-	pub fn render(&self, current_bug: &Bug) {
-		self.sprite.render(current_bug, self.position.x, self.position.y);
-		self.gun_sprite.render(current_bug, self.position.x, self.position.y - 4.0);
-
-		//match current_bug {
-		//	Bug::Corrupted => draw_circle(self.position.x, self.position.y + COLLISION_Y_OFFSET, 1.0, Color::new(0.1, 0.4, 1.0, 0.75)), // debug collision
-		//	_ => {},
-		//}
+	pub fn render(&self, current_bugs: &Vec<Bug>) {
+		self.sprite.render(current_bugs, self.position.x, self.position.y);
+		self.gun_sprite.render(current_bugs, self.position.x, self.position.y - 4.0);
 	}
 }
 
